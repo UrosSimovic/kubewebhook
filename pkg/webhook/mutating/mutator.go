@@ -10,10 +10,19 @@ import (
 	"github.com/slok/kubewebhook/v2/pkg/model"
 )
 
+// todo
+type JsonPatchOperation struct {
+	Operation string      `json:"op"`
+	Path      string      `json:"path"`
+	Value     interface{} `json:"value,omitempty"`
+}
+
 // MutatorResult is the result of a mutator.
 type MutatorResult struct {
 	// StopChain will stop the chain of validators in case there is a chain set.
 	StopChain bool
+	// todo
+	JsonPatch []JsonPatchOperation
 	// MutatedObject is the object that has been mutated. If is nil, it will be used the one
 	// received by the Mutator.
 	MutatedObject metav1.Object
@@ -63,6 +72,7 @@ func NewChain(logger log.Logger, mutators ...Mutator) *Chain {
 // Mutate will execute all the mutation chain.
 func (c *Chain) Mutate(ctx context.Context, ar *model.AdmissionReview, obj metav1.Object) (*MutatorResult, error) {
 	var warnings []string
+	var jsonPatchOps []JsonPatchOperation
 	for _, mt := range c.mutators {
 		select {
 		case <-ctx.Done():
@@ -77,14 +87,23 @@ func (c *Chain) Mutate(ctx context.Context, ar *model.AdmissionReview, obj metav
 				return nil, fmt.Errorf("validator result can't be `nil`")
 			}
 
+			if res.JsonPatch != nil && jsonPatchOps == nil {
+				jsonPatchOps = []JsonPatchOperation{}
+			}
+
 			// Don't lose the data through the chain, set warnings and pass around the mutated object.
 			warnings = append(warnings, res.Warnings...)
+			if res.JsonPatch != nil {
+				jsonPatchOps = append(jsonPatchOps, res.JsonPatch...)
+			}
 			if res.MutatedObject != nil {
 				obj = res.MutatedObject
 			}
 
+
 			if res.StopChain {
 				res.Warnings = warnings
+				res.JsonPatch = jsonPatchOps
 				return res, nil
 			}
 		}
@@ -93,5 +112,6 @@ func (c *Chain) Mutate(ctx context.Context, ar *model.AdmissionReview, obj metav
 	return &MutatorResult{
 		MutatedObject: obj,
 		Warnings:      warnings,
+		JsonPatch:     jsonPatchOps,
 	}, nil
 }

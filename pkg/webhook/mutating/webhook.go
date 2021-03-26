@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
 	"gomodules.xyz/jsonpatch/v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -56,6 +55,7 @@ type mutatingWebhook struct {
 // It will mutate the received resources.
 // This webhook will always allow the admission of the resource, only will deny in case of error.
 func NewWebhook(cfg WebhookConfig) (webhook.Webhook, error) {
+
 	if err := cfg.defaults(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -120,6 +120,22 @@ func (w mutatingWebhook) mutatingAdmissionReview(ctx context.Context, ar model.A
 
 	if res == nil {
 		return nil, fmt.Errorf("result is required, mutator result is nil")
+	}
+
+	// If there is predefined jsonPathc, use that instead to TODO
+	if res.JsonPatch != nil {
+		jp, err := json.Marshal(res.JsonPatch)
+		if err != nil {
+			return nil, fmt.Errorf("could not marshal JSON patch: %w", err)
+		}
+
+		fmt.Println(string(jp))
+
+		return &model.MutatingAdmissionResponse{
+			ID:             ar.ID,
+			JSONPatchPatch: jp,
+			Warnings:       res.Warnings,
+		}, nil
 	}
 
 	// If the user returned a mutated object, it will not be used the one we provided to the mutator.
